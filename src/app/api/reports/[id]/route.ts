@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthSession } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
 
     const report = await prisma.weeklyReport.findUnique({
@@ -17,6 +23,10 @@ export async function GET(
         { error: "Report not found" },
         { status: 404 }
       );
+    }
+
+    if (report.userId !== session.user.id && session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const weekStart = new Date(report.weekStart);

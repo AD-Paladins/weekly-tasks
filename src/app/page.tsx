@@ -1,16 +1,20 @@
+import { redirect } from "next/navigation";
+import { getAuthSession } from "@/lib/auth";
 import Link from "next/link";
 
-export default function Home() {
+export default async function Home() {
+  const session = await getAuthSession();
+
+  if (session) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
       <div className="max-w-md w-full space-y-8 text-center">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-zinc-50 tracking-tight">
-            TaskFlow
-          </h1>
-          <p className="text-lg text-zinc-400">
-            Weekly task reporting for developers
-          </p>
+          <h1 className="text-4xl font-bold text-zinc-50 tracking-tight">TaskFlow</h1>
+          <p className="text-lg text-zinc-400">Weekly task reporting for developers</p>
         </div>
 
         <div className="card p-6 space-y-4">
@@ -19,17 +23,11 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col gap-3">
-            <Link
-              href="/dashboard"
-              className="btn-primary w-full py-3 text-center block"
-            >
-              Get Started
+            <Link href="/login" className="btn-primary w-full py-3 text-center block">
+              Sign In
             </Link>
-            <Link
-              href="/entry"
-              className="btn-secondary w-full py-3 text-center block"
-            >
-              Quick Entry
+            <Link href="/register" className="btn-secondary w-full py-3 text-center block">
+              Register
             </Link>
           </div>
         </div>

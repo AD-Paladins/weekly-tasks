@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthSession } from "@/lib/auth";
 
 async function generateAISummary(tasks: { content: string; date: Date }[]): Promise<string> {
   const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -96,8 +97,13 @@ function generateFallbackSummary(tasks: { content: string; date: Date }[]): stri
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { weekStart, weekEnd, userId } = body;
+    const { weekStart, weekEnd } = body;
 
     if (!weekStart || !weekEnd) {
       return NextResponse.json(
@@ -106,15 +112,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userIdToUse = userId || "default-user-id";
-
     const startDate = new Date(weekStart);
     const endDate = new Date(weekEnd);
     endDate.setHours(23, 59, 59, 999);
 
     const tasks = await prisma.task.findMany({
       where: {
-        userId: userIdToUse,
+        userId: session.user.id,
         date: {
           gte: startDate,
           lte: endDate,
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     const report = await prisma.weeklyReport.findFirst({
       where: {
-        userId: userIdToUse,
+        userId: session.user.id,
         weekStart: startDate,
       },
     });

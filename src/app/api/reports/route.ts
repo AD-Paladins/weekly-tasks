@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId") || "default-user-id";
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const reports = await prisma.weeklyReport.findMany({
-      where: { userId },
+      where: { userId: session.user.id },
       orderBy: { weekStart: "desc" },
     });
 
@@ -23,6 +26,11 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { reportId, status, aiSummary } = body;
 
@@ -31,6 +39,14 @@ export async function PATCH(request: NextRequest) {
         { error: "Report ID is required" },
         { status: 400 }
       );
+    }
+
+    const existingReport = await prisma.weeklyReport.findUnique({
+      where: { id: reportId },
+    });
+
+    if (!existingReport || existingReport.userId !== session.user.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const updateData: Record<string, unknown> = {};

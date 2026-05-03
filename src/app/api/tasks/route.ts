@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getWeekStart, getWeekEnd, formatDate } from "@/lib/utils";
+import { getAuthSession } from "@/lib/auth";
+import { getWeekStart, getWeekEnd } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { content, date, userId } = body;
+    const { content, date } = body;
 
     if (!content || !date) {
       return NextResponse.json(
@@ -18,25 +24,9 @@ export async function POST(request: NextRequest) {
     const weekStart = getWeekStart(taskDate);
     const weekEnd = getWeekEnd(taskDate);
 
-    const userIdToUse = userId || "default-user-id";
-
-    let user = await prisma.user.findUnique({
-      where: { id: userIdToUse },
-    });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: userIdToUse,
-          email: "developer@taskflow.app",
-          name: "Developer",
-        },
-      });
-    }
-
     const task = await prisma.task.create({
       data: {
-        userId: user.id,
+        userId: session.user.id,
         content,
         date: taskDate,
       },
@@ -45,7 +35,7 @@ export async function POST(request: NextRequest) {
     let weeklyReport = await prisma.weeklyReport.findUnique({
       where: {
         userId_weekStart: {
-          userId: user.id,
+          userId: session.user.id,
           weekStart,
         },
       },
@@ -54,7 +44,7 @@ export async function POST(request: NextRequest) {
     if (!weeklyReport) {
       weeklyReport = await prisma.weeklyReport.create({
         data: {
-          userId: user.id,
+          userId: session.user.id,
           weekStart,
           weekEnd,
           status: "draft",
@@ -77,11 +67,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getAuthSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId") || "default-user-id";
     const date = searchParams.get("date");
 
-    const where: Record<string, unknown> = { userId };
+    const where: Record<string, unknown> = { userId: session.user.id };
 
     if (date) {
       const taskDate = new Date(date);

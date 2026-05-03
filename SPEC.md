@@ -5,7 +5,7 @@
 **Project Name**: TaskFlow
 **Type**: Web Application (PWA-capable)
 **Core Functionality**: A zero-friction weekly task reporting system that lets developers log daily bullet points and auto-generates professional weekly summaries via AI.
-**Target Users**: Software developers who need to submit weekly task reports.
+**Target Users**: Software developers and team administrators.
 
 ---
 
@@ -14,10 +14,13 @@
 ### Layout Structure
 
 **Pages**:
-1. `/` - Landing/Login (simplified auth)
-2. `/dashboard` - Main dashboard with weekly reports list
-3. `/entry` - Quick entry form for daily notes
-4. `/report/[id]` - View generated weekly report
+1. `/` - Landing page (redirects to login if not authenticated)
+2. `/login` - Sign in page
+3. `/register` - User registration page
+4. `/dashboard` - Main dashboard with weekly reports list
+5. `/entry` - Quick entry form for daily notes
+6. `/report/[id]` - View generated weekly report
+7. `/admin` - Admin dashboard (ADMIN only)
 
 **Responsive Breakpoints**:
 - Mobile: < 640px (primary focus)
@@ -72,7 +75,6 @@
 - Weekly summary cards in grid (1 col mobile, 2 col tablet, 3 col desktop)
 - Each card shows: week range, task count, AI summary preview, status badge
 - Floating action button (FAB) for quick entry on mobile
-- Pull-to-refresh on mobile
 
 **AI Summary Display**:
 - Structured sections: Accomplishments, Challenges, Next Week Goals
@@ -83,6 +85,11 @@
 - Draft: `bg-zinc-700 text-zinc-300`
 - Pending Review: `bg-amber-500/20 text-amber-400`
 - Completed: `bg-green-500/20 text-green-400`
+
+**Admin Dashboard**:
+- User list with role badges
+- Enable/Disable user toggle
+- Delete user action
 
 ---
 
@@ -100,45 +107,51 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  ADMIN
+  DEVELOPER
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  password     String
+  role         Role     @default(DEVELOPER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tasks         Task[]
   weeklyReports WeeklyReport[]
 }
 
 model Task {
-  id          String   @id @default(cuid())
-  userId      String
-  content     String   @db.Text
-  date        DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  content   String   @db.Text
+  date      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  weeklyReport WeeklyReport?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([date])
 }
 
 model WeeklyReport {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   weekStart   DateTime
   weekEnd     DateTime
-  aiSummary   String?  @db.Text
-  status      String   @default("draft") // draft, pending, completed
-  rawNotes    String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  aiSummary   String?   @db.Text
+  status      String    @default("draft")
+  rawNotes    String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks       Task[]
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, weekStart])
   @@index([userId])
@@ -159,20 +172,25 @@ model WeeklyReport {
 │   │   ├── layout.tsx
 │   │   ├── page.tsx
 │   │   ├── globals.css
-│   │   ├── dashboard/
-│   │   │   └── page.tsx
-│   │   ├── entry/
-│   │   │   └── page.tsx
-│   │   ├── report/[id]/
-│   │   │   └── page.tsx
+│   │   ├── login/page.tsx
+│   │   ├── register/page.tsx
+│   │   ├── dashboard/page.tsx
+│   │   ├── entry/page.tsx
+│   │   ├── report/[id]/page.tsx
+│   │   ├── admin/page.tsx
 │   │   └── api/
-│   │       ├── tasks/
-│   │       │   └── route.ts
-│   │       ├── reports/
-│   │       │   └── route.ts
-│   │       └── ai-summary/
-│   │           └── route.ts
+│   │       ├── auth/[...nextauth]/route.ts
+│   │       ├── auth/register/route.ts
+│   │       ├── tasks/route.ts
+│   │       ├── reports/route.ts
+│   │       ├── reports/[id]/route.ts
+│   │       ├── ai-summary/route.ts
+│   │       └── admin/
+│   │           ├── users/route.ts
+│   │           ├── users/[id]/route.ts
+│   │           └── reports/route.ts
 │   ├── components/
+│   │   ├── AuthProvider.tsx
 │   │   ├── ui/
 │   │   │   ├── Button.tsx
 │   │   │   ├── Card.tsx
@@ -184,35 +202,70 @@ model WeeklyReport {
 │   │   └── Navigation.tsx
 │   ├── lib/
 │   │   ├── prisma.ts
+│   │   ├── auth.ts
 │   │   └── utils.ts
+│   ├── middleware.ts
 │   └── types/
 │       └── index.ts
 ├── public/
 ├── package.json
 ├── tailwind.config.ts
 ├── tsconfig.json
-└── next.config.js
+├── next.config.js
+├── .env
+└── .env.example
 ```
 
 ---
 
-## 5. API Routes
+## 5. Authentication & Authorization
 
-### POST /api/tasks
-- Body: `{ content: string, date: string }`
-- Creates a new task entry for the user
+### Roles
+- **ADMIN**: Can view all users, enable/disable users, delete users, view all reports
+- **DEVELOPER**: Can only view and manage their own tasks and reports
 
-### GET /api/reports
-- Query: `{ userId: string }`
-- Returns all weekly reports for the user
+### Authentication
+- NextAuth.js v5 with credentials provider
+- JWT-based sessions
+- Passwords hashed with bcrypt
 
-### POST /api/ai-summary
-- Body: `{ weekStart: string, weekEnd: string }`
-- Fetches tasks for the week, sends to LLM, returns synthesized summary
+### Environment Variables
+```
+DATABASE_URL="postgresql://..."
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
+OPENAI_API_KEY="sk-..."
+```
 
 ---
 
-## 6. Functionality Specification
+## 6. API Routes
+
+### Authentication
+- `POST /api/auth/register` - Register new user (role: DEVELOPER)
+- `GET/POST /api/auth/[...nextauth]` - NextAuth handlers
+
+### Tasks (Protected - Authenticated users)
+- `POST /api/tasks` - Create task for current user
+- `GET /api/tasks` - Get tasks for current user
+
+### Reports (Protected - Authenticated users)
+- `GET /api/reports` - Get reports for current user
+- `PATCH /api/reports` - Update report status/summary
+- `GET /api/reports/[id]` - Get single report
+
+### AI Summary (Protected - Authenticated users)
+- `POST /api/ai-summary` - Generate AI summary for user's week
+
+### Admin (Protected - ADMIN only)
+- `GET /api/admin/users` - List all users
+- `PATCH /api/admin/users` - Enable/disable user
+- `DELETE /api/admin/users/[id]` - Delete user
+- `GET /api/admin/reports` - View all reports
+
+---
+
+## 7. Functionality Specification
 
 ### Core Features
 
@@ -221,30 +274,45 @@ model WeeklyReport {
 3. **AI Summarization**: LLM transforms raw notes into professional summary
 4. **Report Dashboard**: View all weekly reports with status
 5. **Local Draft Save**: Auto-save form content to localStorage
+6. **User Authentication**: Email/password login with NextAuth
+7. **Role-Based Access**: ADMIN and DEVELOPER roles
+8. **Admin Dashboard**: Manage users (enable/disable/delete)
 
 ### User Flows
 
-1. **Add Daily Task**:
-   - Open app → Tap FAB → Enter bullet points → Save
-   - Task appears in today's list
+1. **Register/Login**:
+   - New users register at `/register`
+   - Existing users sign in at `/login`
+   - After login, redirect to `/dashboard`
 
-2. **Generate Weekly Report**:
+2. **Add Daily Task**:
+   - Tap FAB or navigate to `/entry`
+   - Enter bullet points → Save
+   - Auto-creates weekly report if not exists
+
+3. **Generate Weekly Report**:
    - Navigate to dashboard → Select week → Click "Generate Summary"
    - AI processes tasks → Displays structured summary
 
-3. **View/Edit Report**:
-   - Tap report card → View full summary → Copy or regenerate
+4. **Admin User Management**:
+   - Admin navigates to `/admin`
+   - View all users, toggle active status, delete users
 
 ---
 
-## 7. Acceptance Criteria
+## 8. Acceptance Criteria
 
-- [ ] Dark mode UI renders correctly on all screen sizes
-- [ ] Quick entry form saves tasks to database
-- [ ] Tasks auto-group by week on dashboard
-- [ ] AI summary generates coherent professional summary from bullet points
-- [ ] Mobile FAB navigates to entry page
-- [ ] Report cards show correct status badges
-- [ ] Form inputs have proper focus states
-- [ ] No layout shifts on page load
-- [ ] Touch targets minimum 44px on mobile
+- [x] Dark mode UI renders correctly on all screen sizes
+- [x] Quick entry form saves tasks to database
+- [x] Tasks auto-group by week on dashboard
+- [x] AI summary generates coherent professional summary from bullet points
+- [x] Mobile FAB navigates to entry page
+- [x] Report cards show correct status badges
+- [x] Form inputs have proper focus states
+- [x] No layout shifts on page load
+- [x] Touch targets minimum 44px on mobile
+- [x] Multi-user support with authentication
+- [x] Role-based access control (ADMIN/DEVELOPER)
+- [x] Admin can manage users (enable/disable/delete)
+- [x] Protected routes require authentication
+- [x] Admin-only routes restricted to ADMIN role
