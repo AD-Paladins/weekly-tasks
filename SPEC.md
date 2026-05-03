@@ -6,7 +6,8 @@
 **Type**: Web Application (PWA-capable)
 **Core Functionality**: A zero-friction weekly task reporting system that lets developers log daily bullet points and auto-generates professional weekly summaries via AI.
 **Target Users**: Software developers and team administrators.
-
+**Postgressql run/stop:** brew services start/stop postgresql
+**Server run:** npm run dev
 ---
 
 ## 2. UI/UX Specification
